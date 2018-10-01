@@ -677,11 +677,11 @@ struct cmd* parse_redr(struct cmd* cmd, char** start_of_str, char* end_of_str)
             case '<':
                 cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDONLY, 0, 0);
                 break;
-            case '>':
-                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT, 0, 1);
+            case '>': //O_RDWR
+                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|S_IRWXU|O_TRUNC, 0, 1);
                 break;
             case '+': // >>
-                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|O_APPEND, 0, 1);
+                cmd = redrcmd(cmd, start_of_token, end_of_token, O_CREAT|S_IRWXU|O_APPEND, 0, 1);
                 break;
         }
     }
