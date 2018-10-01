@@ -450,6 +450,8 @@ struct cmd* parse_subs(char**, char*);
 struct cmd* parse_redr(struct cmd*, char**, char*);
 struct cmd* null_terminate(struct cmd*);
 
+void run_exit(struct cmd*);
+
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
 // introducida por el usuario.
@@ -679,7 +681,7 @@ struct cmd* parse_redr(struct cmd* cmd, char** start_of_str, char* end_of_str)
                 cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT, 0, 1);
                 break;
             case '+': // >>
-                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT, 0, 1);
+                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|O_APPEND, 0, 1);
                 break;
         }
     }
@@ -1038,6 +1040,11 @@ void free_cmd(struct cmd* cmd)
     }
 }
 
+void run_exit(struct cmd* cmd){
+    free_cmd(cmd);
+    free(cmd);
+    exit(EXIT_SUCCESS);
+}
 
 /******************************************************************************
  * Lectura de la línea de órdenes con la biblioteca libreadline
@@ -1096,12 +1103,6 @@ void parse_args(int argc, char** argv)
                 break;
         }
     }
-}
-
-void run_exit(struct cmd* cmd){
-    free_cmd(cmd);
-    free(cmd);
-    exit(EXIT_SUCCESS);
 }
 
 
