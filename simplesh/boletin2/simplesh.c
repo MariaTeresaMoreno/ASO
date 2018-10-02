@@ -38,7 +38,6 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-
 /******************************************************************************
  * Constantes, macros y variables globales
  ******************************************************************************/
@@ -803,6 +802,10 @@ void run_cmd(struct cmd* cmd)
         }
 
         if(strcmp(ecmd->argv[0],"cd") == 0){
+		if(ecmd->argc > 2){
+		    fprintf(stderr, "run_cd: Demasiados argumentos\n");
+		    break;
+		}
                 run_cd(ecmd->argv[1]);
                 break;
         }
@@ -823,9 +826,9 @@ void run_cmd(struct cmd* cmd)
                     exit(EXIT_FAILURE);
                 }
 
-                if (rcmd->cmd->type == EXEC)
+               /* if (rcmd->cmd->type == EXEC)
                     exec_cmd((struct execcmd*) rcmd->cmd);
-                else
+                else*/
                     run_cmd(rcmd->cmd);
                 exit(EXIT_SUCCESS);
             }
@@ -853,9 +856,9 @@ void run_cmd(struct cmd* cmd)
                 TRY( dup(p[1]) );
                 TRY( close(p[0]) );
                 TRY( close(p[1]) );
-                if (pcmd->left->type == EXEC)
+               /* if (pcmd->left->type == EXEC)
                     exec_cmd((struct execcmd*) pcmd->left);
-                else
+                else*/
                     run_cmd(pcmd->left);
                 exit(EXIT_SUCCESS);
             }
@@ -867,9 +870,9 @@ void run_cmd(struct cmd* cmd)
                 TRY( dup(p[0]) );
                 TRY( close(p[0]) );
                 TRY( close(p[1]) );
-                if (pcmd->right->type == EXEC)
+               /* if (pcmd->right->type == EXEC)
                     exec_cmd((struct execcmd*) pcmd->right);
-                else
+                else*/
                     run_cmd(pcmd->right);
                 exit(EXIT_SUCCESS);
             }
@@ -1078,7 +1081,7 @@ char* get_path(){
 //run_cwd() obtiene la ruta absoluta del directorio actual
 void run_cwd(){
     char *ruta = get_path();
-    fprintf(stderr,"simplesh: cwd: ");
+  //  fprintf(stderr,"simplesh: cwd: ");
     fprintf(stdout,"%s\n", ruta);
     free(ruta);
 }
@@ -1086,19 +1089,27 @@ void run_cwd(){
 /*run_cd() ejecuta el comando cd directorio moviéndonos al directorio que se indica como argumento
     cd " " nos sitúa en el directorio HOME
     cd - nos sitúa en el directorio anterior OLDPWD*/
-void run_cd(char *dir){
-
-    char *old = get_path();
-
-    //asigno como nuevo dir. el path passado como parámetro
-    if (chdir(dir) == -1)
-            fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
-
-
-    //actualizar OLDPWD
-    //liberar old
-    free(old);
-
+void run_cd(char *dir){ 
+	char * old = get_path();
+	//Se ejecuta cd sin argumentos
+	if(dir == NULL){
+	  if(chdir(getenv("HOME")) == -1)
+	     fprintf(stderr,"run_cd: No existe el directorio\n");
+	}else if(strcmp(dir, "-") == 0){
+	//Se ejecuta cd -
+	   if(chdir(getenv("OLDPWD")) == -1)
+		fprintf(stderr,"run_cd: Variable OLDPWD no definida.\n");
+	}else{
+	//Ejecución de cd ruta	
+	   if(chdir(dir) == -1)
+	     fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
+	   
+	}
+	//Actualización de variable de entorno OLDPWD
+	if(setenv("OLDPWD", old, 1) == -1)
+		fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
+	//liberar old
+	free(old);
 
 }
 /******************************************************************************
@@ -1183,7 +1194,7 @@ int main(int argc, char** argv)
 {
     char* buf;
     struct cmd* cmd;
-
+    unsetenv("OLDPWD");
     parse_args(argc, argv);
 
     DPRINTF(DBG_TRACE, "STR\n");
