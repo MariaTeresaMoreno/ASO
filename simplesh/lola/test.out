@@ -1,0 +1,27 @@
+simplesh.py: Created temporary directory: '/tmp/tmphhxiooai'.
+simplesh.py: Successfully executed setup commands '['touch f1', 'touch f2', 'mkdir dir', 'mkdir olddir']'.
+simplesh.py: B1.T01: Result   : OK!
+simplesh.py: B1.T02: Result   : OK!
+simplesh.py: B1.T03: Result   : OK!
+simplesh.py: B1.T04: Result   : OK!
+simplesh.py: B1.T05: Result   : OK!
+simplesh.py: B1.T06: Result   : KO!
+simplesh.py: B1.T07: Result   : KO!
+simplesh.py: B1.T08: Result   : KO!
+simplesh.py: B1.T09: Result   : KO!
+simplesh.py: B1.T10: Result   : KO!
+simplesh.py: B1.T11: Result   : OK!
+simplesh.py: B1.T12: Result   : OK!
+simplesh.py: B1.T13: Result   : KO!
+simplesh.py: B1.T14: Result   : KO!
+simplesh.py: B1.T15: Result   : OK!
+simplesh.py: B1.T16: Result   : OK!
+simplesh.py: B1.T17: Result   : KO!
+simplesh.py: B1.T18: Result   : KO!
+simplesh.py: B1.T19: Result   : KO!
+simplesh.py: B1.T20: Result   : KO!
+simplesh.py: B1.T21: Result   : KO!
+simplesh.py: B1.T22: Result   : OK!
+simplesh.py: B1.T23: Result   : KO!
+simplesh.py: B1.T24: Result   : KO!
+simplesh.py: B1.T25: Result   : OK!
