@@ -773,10 +773,19 @@ void exec_cmd(struct execcmd* ecmd)
 //ya que el tratamiento de los comandos difiere dependiendo del tipo de comando ejecutado.
 int check_internal_cmd(struct execcmd * cmd){
 	//Comprueba que el comando a ejecutar es alguno de los comandos implementados
-	if(strcmp(cmd->argv[0], "cd") == 0 ) return 0;
-	else if ( strcmp(cmd->argv[0], "cwd") == 0) return 0;
-	else if (strcmp(cmd->argv[0], "exit") == 0) return 0;
-		//Se trata de un comando externo
+	if(strcmp(cmd->argv[0], "cd") == 0 ){
+		run_cd(cmd->argv[1]);
+		return 0;	
+	} 
+	else if ( strcmp(cmd->argv[0], "cwd") == 0){
+		run_cwd();
+		return 0;
+	}
+	else if (strcmp(cmd->argv[0], "exit") == 0){
+		run_exit((struct cmd*)cmd->type);
+		 return 0;
+	}
+	//Se trata de un comando externo
 	else return 1;
 }
 void run_cmd(struct cmd* cmd)
@@ -833,12 +842,9 @@ void run_cmd(struct cmd* cmd)
 
         case REDR:
             rcmd = (struct redrcmd*) cmd;
-		if(check_internal_cmd((struct execcmd*) rcmd)){
-	   	   run_cmd(rcmd->cmd);
-		   break;
-		}
 		
-	       if (fork_or_panic("fork REDR") == 0){
+	if(! check_internal_cmd((struct execcmd*)rcmd)){
+		       if (fork_or_panic("fork REDR") == 0){
 		    TRY( close(rcmd->fd) );
 		    if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0){
 		            perror("open");
@@ -852,7 +858,7 @@ void run_cmd(struct cmd* cmd)
 		    }
 		    TRY( wait(NULL) );
 		    break;
-		 
+	}
         case LIST:
             lcmd = (struct listcmd*) cmd;
             run_cmd(lcmd->left);
@@ -885,10 +891,6 @@ void run_cmd(struct cmd* cmd)
 
             // Esperar al hijo de la izquierda
             TRY( wait(NULL) );
-	    }else{
-		//El hijo de la izquierda es un comando interno
-		run_cmd(pcmd->left);
-		break;
 	    }
 	    //Comprobación de comando interno de hijo derecho
 	    if(! check_internal_cmd((struct execcmd *)pcmd->right)){
@@ -908,24 +910,17 @@ void run_cmd(struct cmd* cmd)
 		    TRY( close(p[0]) );
 		    TRY( close(p[1]) );
 
-		    // Esperar a ambos hijos
+		    // Esperar al hijo de la derecha
 		    TRY( wait(NULL) );
 
-   	    }else{
-		//El comando derecho es un comando interno
-		run_cmd(pcmd->right);
+   	    }
 		break;
-	   }
-	    
             
 
         case BACK:
             bcmd = (struct backcmd*)cmd;
 	    
-	    if (check_internal_cmd((struct execcmd*) bcmd)){
-		run_cmd(bcmd->cmd);
-		break;
-	    }
+	    if (!check_internal_cmd((struct execcmd*) bcmd)){
             if (fork_or_panic("fork BACK") == 0)
             {
                 if (bcmd->cmd->type == EXEC)
@@ -934,21 +929,19 @@ void run_cmd(struct cmd* cmd)
                     run_cmd(bcmd->cmd);
                 exit(EXIT_SUCCESS);
             }
-
+	}
             break;
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
-	    if (check_internal_cmd((struct execcmd*) scmd)){
-		run_cmd(scmd->cmd);
-		break;
-	    }
-            if (fork_or_panic("fork SUBS") == 0)
+	    if (!check_internal_cmd((struct execcmd*) scmd)){
+	    if (fork_or_panic("fork SUBS") == 0)
             {
                 run_cmd(scmd->cmd);
                 exit(EXIT_SUCCESS);
             }
             TRY( wait(NULL) );
+	    }
             break;
 
         case INV:
