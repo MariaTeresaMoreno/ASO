@@ -916,6 +916,11 @@ void run_cmd(struct cmd* cmd)
 
         case BACK:
             bcmd = (struct backcmd*)cmd;
+	    
+	    if (check_internal_cmd((struct execcmd*) bcmd)){
+		run_cmd(bcmd->cmd);
+		break;
+	    }
             if (fork_or_panic("fork BACK") == 0)
             {
                 if (bcmd->cmd->type == EXEC)
@@ -924,10 +929,15 @@ void run_cmd(struct cmd* cmd)
                     run_cmd(bcmd->cmd);
                 exit(EXIT_SUCCESS);
             }
+
             break;
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
+	    if (check_internal_cmd((struct execcmd*) scmd)){
+		run_cmd(scmd->cmd);
+		break;
+	    }
             if (fork_or_panic("fork SUBS") == 0)
             {
                 run_cmd(scmd->cmd);
