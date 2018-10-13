@@ -455,6 +455,7 @@ struct cmd* null_terminate(struct cmd*);
 void run_exit(struct cmd*);
 void run_cwd();
 void run_cd(char *path);
+void run_hd(struct execcmd* cmd);
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
 // introducida por el usuario.
@@ -772,11 +773,11 @@ void exec_cmd(struct execcmd* ecmd)
 //ya que el tratamiento de los comandos difiere dependiendo del tipo de comando ejecutado.
 int check_internal_cmd(struct execcmd * cmd){
 	//Comprueba que el comando a ejecutar es alguno de los comandos implementados
-	if(strcmp(cmd->argv[0], "cd") == 0 ) return 1;
-	else if ( strcmp(cmd->argv[0], "cwd") == 0) return 1;
-	else if (strcmp(cmd->argv[0], "exit") == 0) return 1;
+	if(strcmp(cmd->argv[0], "cd") == 0 ) return 0;
+	else if ( strcmp(cmd->argv[0], "cwd") == 0) return 0;
+	else if (strcmp(cmd->argv[0], "exit") == 0) return 0;
 		//Se trata de un comando externo
-	else return 0;
+	else return 1;
 }
 void run_cmd(struct cmd* cmd)
 {
@@ -805,6 +806,11 @@ void run_cmd(struct cmd* cmd)
 		  run_exit(cmd);
 		  break;
 		}
+		//Ejecución de comando interno hd
+		/*if(strcmp(ecmd->argv[0],"hd") == 0){
+		   run_hd(ecmd);
+		   break;
+		}*/
 		//Ejecución de comando interno cwd
 		if(strcmp(ecmd->argv[0],"cwd") == 0){
 		   run_cwd();
@@ -820,14 +826,10 @@ void run_cmd(struct cmd* cmd)
 		   break;
 		}
 		//Se trata de un comando externo
-		if (! check_internal_cmd(ecmd)){
 		   if (fork_or_panic("fork EXEC") == 0)
                        exec_cmd(ecmd);
                    TRY( wait(NULL) );
 		   break;	
-		  }            
-
-            break;
 
         case REDR:
             rcmd = (struct redrcmd*) cmd;
@@ -864,11 +866,9 @@ void run_cmd(struct cmd* cmd)
                 perror("pipe");
                 exit(EXIT_FAILURE);
             }
-	    
-	    
-            if(!check_internal_cmd((struct execcmd*) pcmd->left) && ! check_internal_cmd((struct execcmd *)pcmd->right)){
-		// Ejecución del hijo de la izquierda
-            if (fork_or_panic("fork PIPE left") == 0)
+	    //El comando de la izquierda no es un comando interno-> crea el hijo para su ejecución
+	    if (! check_internal_cmd((struct execcmd*) pcmd->left)){
+		if (fork_or_panic("fork PIPE left") == 0)
             {
                 TRY( close(1) );
                 TRY( dup(p[1]) );
@@ -880,39 +880,44 @@ void run_cmd(struct cmd* cmd)
                     run_cmd(pcmd->left);
                 exit(EXIT_SUCCESS);
             }
-
-            // Ejecución del hijo de la derecha
-            if (fork_or_panic("fork PIPE right") == 0)
-            {
-                TRY( close(0) );
-                TRY( dup(p[0]) );
-                TRY( close(p[0]) );
-                TRY( close(p[1]) );
-                if (pcmd->right->type == EXEC)
-                    exec_cmd((struct execcmd*) pcmd->right);
-                else
-                    run_cmd(pcmd->right);
-                exit(EXIT_SUCCESS);
-            }
-            TRY( close(p[0]) );
+	    TRY( close(p[0]) );
             TRY( close(p[1]) );
 
-            // Esperar a ambos hijos
+            // Esperar al hijo de la izquierda
             TRY( wait(NULL) );
-            TRY( wait(NULL) );
-
 	    }else{
-		if (check_internal_cmd((struct execcmd*) pcmd->left)){
+		//El hijo de la izquierda es un comando interno
 		run_cmd(pcmd->left);
 		break;
-	    	}
-	    	if (check_internal_cmd((struct execcmd*) pcmd->right)){
+	    }
+	    //Comprobación de comando interno de hijo derecho
+	    if(! check_internal_cmd((struct execcmd *)pcmd->right)){
+		//El comando derecho no es un comando interno-> creo hijo para ejecución
+		 if (fork_or_panic("fork PIPE right") == 0)
+		    {
+		        TRY( close(0) );
+		        TRY( dup(p[0]) );
+		        TRY( close(p[0]) );
+		        TRY( close(p[1]) );
+		        if (pcmd->right->type == EXEC)
+		            exec_cmd((struct execcmd*) pcmd->right);
+		        else
+		            run_cmd(pcmd->right);
+		        exit(EXIT_SUCCESS);
+		    }
+		    TRY( close(p[0]) );
+		    TRY( close(p[1]) );
+
+		    // Esperar a ambos hijos
+		    TRY( wait(NULL) );
+
+   	    }else{
+		//El comando derecho es un comando interno
 		run_cmd(pcmd->right);
 		break;
-	    	}
-
-	    }
-            break;
+	   }
+	    
+            
 
         case BACK:
             bcmd = (struct backcmd*)cmd;
@@ -1150,6 +1155,82 @@ void run_cd(char *dir){
 		fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno");
 	//liberar old
 	free(old);
+
+}
+//Ejecución del comando hd, para ello se requiere el comando completo pasado por parámetro
+//Se llevará a cabo internamente los tratamientos de error y la ejecución del mismo.
+void run_hd(struct execcmd * cmd){
+//No necesito comprobar el tipo de comando puesto que lo compruebo en run_cmd
+//Caso de solicitud de parámetro -h
+if (strcmp(cmd->argv[1], "-h") == 0){	
+	if(cmd->argc > 2){
+	//Si hay más de dos argumentos no se ha construido bien el comando. Debe ser: hd -h
+	fprintf(stderr, "hd: Opción no válida\n");
+	}
+	//Impresión de la ayuda del comando, se ha introducido correctamente el: hd -h
+	fprintf(stdout, "Uso: hd [-l NLINES] [-b NBYTES] [-t BSIZE] [FILE1] [FILE2] ...\n");
+	fprintf(stdout, "\tOpciones:\n");
+	fprintf(stdout, "\t-l NLINES Número máximo de líneas a mostrar.\n");
+	fprintf(stdout, "\t-b NBYTES Número máximo de bytes a mostrar.\n");
+	fprintf(stdout, "\t-t BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o stdin.\n");
+	fprintf(stdout, "\t-h help\n");
+}
+//Procesamiento del comando con las posibles opciones
+int opt, flag, n, lsize, bsize, tsize;
+    flag = n = 0;
+    optind = 1;
+    lsize, bsize = -1;
+//Procesamiento de las opciones -l -b y -t del comando
+    while ((opt = getopt(cmd->argc, cmd->argv, "l:b:t:h")) != -1) {
+        switch (opt) {
+            case 'l':
+		lsize = atoi(optarg);	
+		//En caso de que el tamaño de líneas a leer sea negativo, no es válido. 
+		if(lsize < 0){
+		   fprintf(stderr, "hd: Opción no válida\n");
+		   break;		
+		}
+               // flag = 1;
+                break;
+            case 'b':
+		bsize = atoi(optarg);
+               //En caso de que el tamaño de bytes a leer sea negativo, no es válido. 
+		if(bsize < 0){
+		   fprintf(stderr, "hd: Opción no válida\n");
+		   break;		
+		}
+                break;
+	    case 't':
+		tsize = atoi(optarg);
+		//En caso de que el tamaño de líneas a leer sea negativo, no es válido. 
+		if(tsize < 0){
+		   fprintf(stderr, "hd: Opción no válida\n");
+		   break;		
+		}
+		break;
+            default:
+                fprintf(stderr, "Usage: %s [-f] [-n NUM]\n", cmd->argv[0]);
+        }
+    }
+	//Compruebo que no utilizo a la vez -b y -l 
+	if(lsize != -1 && bsize != -1) {
+	  fprintf(stderr, "hd: Opciones incompatibles\n");
+	  return;
+	}
+
+//En este bucle deberá de leer los ficheros para obtener las líneas o bytes requeridos por el comando
+	//Si el índice optind es idéntico a la cantidad de argumentos después de comprobar los parámetros quiere decir
+	//que la lectura se hace desde stdin y no hay ficheros en el comando
+	if(optind == cmd->argc){
+		//Leo desde stdin acorde a los valores de lsize o bsize indicados y comprobando tsize también
+	}else{
+		//si son distintos, tengo al menos un fichero en el comando	
+	    for(int i = optind; i < cmd->argc; i++){
+		
+	    }	
+	}
+
+	
 
 }
 /******************************************************************************
