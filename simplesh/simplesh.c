@@ -31,11 +31,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
+#include <pwd.h>
+#include <limits.h>
+#include <libgen.h>
 // Biblioteca readline
 #include <readline/readline.h>
 #include <readline/history.h>
-
 
 /******************************************************************************
  * Constantes, macros y variables globales
@@ -451,7 +452,8 @@ struct cmd* parse_redr(struct cmd*, char**, char*);
 struct cmd* null_terminate(struct cmd*);
 
 void run_exit(struct cmd*);
-
+void run_cwd();
+void run_cd(char *path);
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
 // introducida por el usuario.
@@ -678,10 +680,10 @@ struct cmd* parse_redr(struct cmd* cmd, char** start_of_str, char* end_of_str)
                 cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDONLY, 0, 0);
                 break;
             case '>': //O_RDWR
-                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|S_IRWXU|O_TRUNC, 0, 1);
+                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|O_TRUNC, S_IRWXU, 1);
                 break;
             case '+': // >>
-                cmd = redrcmd(cmd, start_of_token, end_of_token, O_CREAT|S_IRWXU|O_APPEND, 0, 1);
+                cmd = redrcmd(cmd, start_of_token, end_of_token, O_RDWR|O_CREAT|O_APPEND, S_IRWXU, 1);
                 break;
         }
     }
@@ -792,7 +794,17 @@ void run_cmd(struct cmd* cmd)
 	    if(strcmp(ecmd->argv[0],"exit") == 0){
                 run_exit(cmd);
                 break;
-            }
+        }
+
+        if(strcmp(ecmd->argv[0],"cwd") == 0){
+                run_cwd();
+                break;
+        }
+
+        if(strcmp(ecmd->argv[0],"cd") == 0){
+                run_cd(ecmd->argv[1]);
+                break;
+        }
             
 	    if (fork_or_panic("fork EXEC") == 0)
                 exec_cmd(ecmd);
@@ -804,7 +816,7 @@ void run_cmd(struct cmd* cmd)
             if (fork_or_panic("fork REDR") == 0)
             {
                 TRY( close(rcmd->fd) );
-                if ((fd = open(rcmd->file, rcmd->flags)) < 0)
+                if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
                 {
                     perror("open");
                     exit(EXIT_FAILURE);
@@ -1046,6 +1058,56 @@ void run_exit(struct cmd* cmd){
     exit(EXIT_SUCCESS);
 }
 
+// get_path() obtiene el directorio actual (ruta absoluta)
+char* get_path(){
+    char *ruta = malloc(PATH_MAX);
+    if(!ruta){
+        perror("getcwd: malloc");
+        exit(EXIT_FAILURE);
+    }
+    getcwd(ruta, PATH_MAX);
+    if (!ruta){
+       perror("getcwd");
+        exit(EXIT_FAILURE); 
+    }
+
+    return ruta;
+}
+
+//run_cwd() obtiene la ruta absoluta del directorio actual
+void run_cwd(){
+    char *ruta = get_path();
+    fprintf(stderr,"simplesh: cwd: ");
+    fprintf(stdout,"%s\n", ruta);
+    free(ruta);
+}
+
+/*run_cd() ejecuta el comando cd directorio moviéndonos al directorio que se indica como argumento
+    cd " " nos sitúa en el directorio HOME
+    cd - nos sitúa en el directorio anterior OLDPWD*/
+void run_cd(char *dir){ 
+	char * old = get_path();
+	//Se ejecuta cd sin argumentos
+	if(dir == NULL){
+	  if(chdir(getenv("HOME")) == -1)
+	     fprintf(stderr,"run_cd: No existe el directorio\n");
+	}else if(strcmp(dir, "-") == 0){
+	//Se ejecuta cd -
+	   if(chdir(getenv("OLDPWD")) == -1)
+		fprintf(stderr,"run_cd: Variable OLDPWD no definida.\n");
+	}else{
+	//Ejecución de cd ruta	
+	   if(chdir(dir) == -1)
+	     fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
+	   
+	}
+	//Actualización de variable de entorno OLDPWD
+	if(setenv("OLDPWD", old, 1) == -1)
+		fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
+	//liberar old
+	free(old);
+
+}
 /******************************************************************************
  * Lectura de la línea de órdenes con la biblioteca libreadline
  ******************************************************************************/
@@ -1059,9 +1121,27 @@ char* get_cmd()
 {
     char* buf;
 
-    // Lee la orden tecleada por el usuario
-    buf = readline("simplesh> ");
+    //obtengo uid del usuario actual
+    uid_t uid = getuid();
+    //obtengo la estructura passwd 
+    struct passwd* pwd = getpwuid(uid);
+    if(!pwd){
+    	perror("getpwuid");
+    	exit(EXIT_FAILURE);
+    }
+    //obtengo el username del usuario actual; ej)alumno
+    char *username = pwd->pw_name;
+    //obtengo la ruta absoluta
+    char *ruta = get_path();
+    //obtengo la ruta relativa
+    char *relativa= basename(ruta);
 
+    char* prompt = malloc(strlen(username)+strlen(relativa)+4);
+    sprintf(prompt, "%s@%s> ", username, relativa);
+    free(ruta);
+
+    buf = readline(prompt);
+    free(prompt);
     // Si el usuario ha escrito una orden, almacenarla en la historia.
     if(buf)
         add_history(buf);
@@ -1110,7 +1190,7 @@ int main(int argc, char** argv)
 {
     char* buf;
     struct cmd* cmd;
-
+    unsetenv("OLDPWD");
     parse_args(argc, argv);
 
     DPRINTF(DBG_TRACE, "STR\n");
