@@ -34,6 +34,9 @@
 #include <pwd.h>
 #include <limits.h>
 #include <libgen.h>
+#include <unistd.h>
+#include <sys/param.h>
+#include <signal.h>
 // Biblioteca readline
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -85,7 +88,7 @@ static int g_dbg_level = 0;
 // Número máximo de argumentos de un comando
 #define MAX_ARGS 16
 
-
+struct cmd* cmd;
 // Delimitadores
 static const char WHITESPACE[] = " \t\r\n\v";
 // Caracteres especiales
@@ -451,8 +454,7 @@ struct cmd* parse_subs(char**, char*);
 struct cmd* parse_redr(struct cmd*, char**, char*);
 struct cmd* null_terminate(struct cmd*);
 
-void free_cmd(struct cmd* cmd);
-void run_exit(struct cmd* cmd);
+
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
 // introducida por el usuario.
@@ -766,14 +768,6 @@ void exec_cmd(struct execcmd* ecmd)
     panic("no se encontró el comando '%s'\n", ecmd->argv[0]);
 }
 
-
-void run_exit(struct cmd* cmd){
-    free_cmd(cmd);
-    free(cmd);
-    //liberarMemoria();
-    exit(EXIT_SUCCESS);
-}
-
 // get_path() obtiene el directorio actual (ruta absoluta)
 char* get_path(){
     char *ruta = malloc(PATH_MAX);
@@ -793,8 +787,8 @@ char* get_path(){
 //run_cwd() obtiene la ruta absoluta del directorio actual
 void run_cwd(){
     char *ruta = get_path();
-  //  fprintf(stderr,"simplesh: cwd: ");
-    fprintf(stdout,"%s\n", ruta);
+    fprintf(stderr,"simplesh: cwd: ");
+    fprintf(stdout,"cwd: %s\n", ruta);
     free(ruta);
 }
 
@@ -810,20 +804,26 @@ void run_cd(char *dir){
     }else if(strcmp(dir, "-") == 0){
     //Se ejecuta cd -
        if(chdir(getenv("OLDPWD")) == -1)
-        fprintf(stderr,"run_cd: Variable OLDPWD no definida\n");
+            fprintf(stderr,"run_cd: Variable OLDPWD no definida\n");
     }else{
     //Ejecución de cd ruta  
        if(chdir(dir) == -1)
          fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
-       
     }
     //Actualización de variable de entorno OLDPWD
     if(setenv("OLDPWD", old, 1) == -1)
         fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
+   
     //liberar old
     free(old);
 }
 
+void freeMemory();
+
+void run_exit(){
+    freeMemory();
+    exit(EXIT_SUCCESS);
+}
 // `checkCommand` comprueba si un comando es interno o no.
 // Devuelve 0 si es comando interno, 1 en caso contrario.
 int checkCommand(struct execcmd* cmd){
@@ -839,7 +839,7 @@ int checkCommand(struct execcmd* cmd){
     if (strcmp(cmd->argv[0],"exit") == 0){
         run_exit();
         return 0;
-    } 
+    }
    
     if (strcmp(cmd->argv[0],"cd") == 0){
         run_cd(cmd->argv[1]);
@@ -848,6 +848,70 @@ int checkCommand(struct execcmd* cmd){
     return 1;
 }
 
+void free_cmd(struct cmd* cmd)
+{
+    struct execcmd* ecmd;
+    struct redrcmd* rcmd;
+    struct listcmd* lcmd;
+    struct pipecmd* pcmd;
+    struct backcmd* bcmd;
+    struct subscmd* scmd;
+
+    if(cmd == 0) return;
+
+    switch(cmd->type)
+    {
+        case EXEC:
+            break;
+
+        case REDR:
+            rcmd = (struct redrcmd*) cmd;
+            free_cmd(rcmd->cmd);
+
+            free(rcmd->cmd);
+            break;
+
+        case LIST:
+            lcmd = (struct listcmd*) cmd;
+
+            free_cmd(lcmd->left);
+            free_cmd(lcmd->right);
+
+            free(lcmd->right);
+            free(lcmd->left);
+            break;
+
+        case PIPE:
+            pcmd = (struct pipecmd*) cmd;
+
+            free_cmd(pcmd->left);
+            free_cmd(pcmd->right);
+
+            free(pcmd->right);
+            free(pcmd->left);
+            break;
+
+        case BACK:
+            bcmd = (struct backcmd*) cmd;
+
+            free_cmd(bcmd->cmd);
+
+            free(bcmd->cmd);
+            break;
+
+        case SUBS:
+            scmd = (struct subscmd*) cmd;
+
+            free_cmd(scmd->cmd);
+
+            free(scmd->cmd);
+            break;
+
+        case INV:
+        default:
+            panic("%s: estructura `cmd` desconocida\n", __func__);
+    }
+}
 
 void run_cmd(struct cmd* cmd)
 {
@@ -1065,71 +1129,6 @@ void print_cmd(struct cmd* cmd)
 }
 
 
-void free_cmd(struct cmd* cmd)
-{
-    struct execcmd* ecmd;
-    struct redrcmd* rcmd;
-    struct listcmd* lcmd;
-    struct pipecmd* pcmd;
-    struct backcmd* bcmd;
-    struct subscmd* scmd;
-
-    if(cmd == 0) return;
-
-    switch(cmd->type)
-    {
-        case EXEC:
-            break;
-
-        case REDR:
-            rcmd = (struct redrcmd*) cmd;
-            free_cmd(rcmd->cmd);
-
-            free(rcmd->cmd);
-            break;
-
-        case LIST:
-            lcmd = (struct listcmd*) cmd;
-
-            free_cmd(lcmd->left);
-            free_cmd(lcmd->right);
-
-            free(lcmd->right);
-            free(lcmd->left);
-            break;
-
-        case PIPE:
-            pcmd = (struct pipecmd*) cmd;
-
-            free_cmd(pcmd->left);
-            free_cmd(pcmd->right);
-
-            free(pcmd->right);
-            free(pcmd->left);
-            break;
-
-        case BACK:
-            bcmd = (struct backcmd*) cmd;
-
-            free_cmd(bcmd->cmd);
-
-            free(bcmd->cmd);
-            break;
-
-        case SUBS:
-            scmd = (struct subscmd*) cmd;
-
-            free_cmd(scmd->cmd);
-
-            free(scmd->cmd);
-            break;
-
-        case INV:
-        default:
-            panic("%s: estructura `cmd` desconocida\n", __func__);
-    }
-
-
 /******************************************************************************
  * Lectura de la línea de órdenes con la biblioteca libreadline
  ******************************************************************************/
@@ -1169,6 +1168,11 @@ char* get_cmd()
         add_history(buf);
 
     return buf;
+}
+
+void freeMemory(){
+    free_cmd(cmd);
+    free(cmd);
 }
 
 
@@ -1233,9 +1237,8 @@ int main(int argc, char** argv){
         // Ejecuta la línea de órdenes
         run_cmd(cmd);
 
-        // Libera la memoria de las estructuras `cmd`
-        free_cmd(cmd);
-        free(cmd);
+        // Libera la memoria de las estructuras `cmd` y cmd
+        freeMemory();
 
         // Libera la memoria de la línea de órdenes
         free(buf);
