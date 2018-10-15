@@ -451,9 +451,8 @@ struct cmd* parse_subs(char**, char*);
 struct cmd* parse_redr(struct cmd*, char**, char*);
 struct cmd* null_terminate(struct cmd*);
 
-void run_exit(struct cmd*);
-void run_cwd();
-void run_cd(char *path);
+void free_cmd(struct cmd* cmd);
+void run_exit(struct cmd* cmd);
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
 // introducida por el usuario.
@@ -768,6 +767,88 @@ void exec_cmd(struct execcmd* ecmd)
 }
 
 
+void run_exit(struct cmd* cmd){
+    free_cmd(cmd);
+    free(cmd);
+    //liberarMemoria();
+    exit(EXIT_SUCCESS);
+}
+
+// get_path() obtiene el directorio actual (ruta absoluta)
+char* get_path(){
+    char *ruta = malloc(PATH_MAX);
+    if(!ruta){
+        perror("getcwd: malloc");
+        exit(EXIT_FAILURE);
+    }
+    getcwd(ruta, PATH_MAX);
+    if (!ruta){
+       perror("getcwd");
+        exit(EXIT_FAILURE); 
+    }
+
+    return ruta;
+}
+
+//run_cwd() obtiene la ruta absoluta del directorio actual
+void run_cwd(){
+    char *ruta = get_path();
+  //  fprintf(stderr,"simplesh: cwd: ");
+    fprintf(stdout,"%s\n", ruta);
+    free(ruta);
+}
+
+/*run_cd() ejecuta el comando cd directorio moviéndonos al directorio que se indica como argumento
+    cd " " nos sitúa en el directorio HOME
+    cd - nos sitúa en el directorio anterior OLDPWD*/
+void run_cd(char *dir){ 
+    char * old = get_path();
+    //Se ejecuta cd sin argumentos
+    if(!dir){
+      if(chdir(getenv("HOME")) == -1)
+         fprintf(stderr,"run_cd: Variable HOME no está definida\n");
+    }else if(strcmp(dir, "-") == 0){
+    //Se ejecuta cd -
+       if(chdir(getenv("OLDPWD")) == -1)
+        fprintf(stderr,"run_cd: Variable OLDPWD no definida\n");
+    }else{
+    //Ejecución de cd ruta  
+       if(chdir(dir) == -1)
+         fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
+       
+    }
+    //Actualización de variable de entorno OLDPWD
+    if(setenv("OLDPWD", old, 1) == -1)
+        fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
+    //liberar old
+    free(old);
+}
+
+// `checkCommand` comprueba si un comando es interno o no.
+// Devuelve 0 si es comando interno, 1 en caso contrario.
+int checkCommand(struct execcmd* cmd){
+    
+    if (cmd->argv[0] == NULL)
+        return 0;
+   
+    if (strcmp(cmd->argv[0],"cwd") == 0){
+        run_cwd();
+        return 0;
+    }
+   
+    if (strcmp(cmd->argv[0],"exit") == 0){
+        run_exit();
+        return 0;
+    } 
+   
+    if (strcmp(cmd->argv[0],"cd") == 0){
+        run_cd(cmd->argv[1]);
+        return 0;
+    }
+    return 1;
+}
+
+
 void run_cmd(struct cmd* cmd)
 {
     struct execcmd* ecmd;
@@ -787,32 +868,13 @@ void run_cmd(struct cmd* cmd)
     {
         case EXEC:
             ecmd = (struct execcmd*) cmd;
-	    
-	    if(ecmd->argv[0] == NULL)
-                break;
-
-	    if(strcmp(ecmd->argv[0],"exit") == 0){
-                run_exit(cmd);
-                break;
-        }
-
-        if(strcmp(ecmd->argv[0],"cwd") == 0){
-                run_cwd();
-                break;
-        }
-
-        if(strcmp(ecmd->argv[0],"cd") == 0){
-		if(ecmd->argc > 2){
-		    fprintf(stderr, "run_cd: Demasiados argumentos\n");
-		    break;
-		}
-                run_cd(ecmd->argv[1]);
-                break;
-        }
-            
-	    if (fork_or_panic("fork EXEC") == 0)
-                exec_cmd(ecmd);
-            TRY( wait(NULL) );
+            //compruebo si es un comando interno
+            //devuelve 1 si no es un comando interno y creo un fork
+            if(checkCommand(ecmd) == 1){
+                if ((fork_or_panic("fork EXEC")) == 0)
+                    exec_cmd(ecmd);
+                TRY( wait(NULL) );
+            }
             break;
 
         case REDR:
@@ -826,9 +888,9 @@ void run_cmd(struct cmd* cmd)
                     exit(EXIT_FAILURE);
                 }
 
-               /* if (rcmd->cmd->type == EXEC)
+                if (rcmd->cmd->type == EXEC)
                     exec_cmd((struct execcmd*) rcmd->cmd);
-                else*/
+                else
                     run_cmd(rcmd->cmd);
                 exit(EXIT_SUCCESS);
             }
@@ -856,10 +918,15 @@ void run_cmd(struct cmd* cmd)
                 TRY( dup(p[1]) );
                 TRY( close(p[0]) );
                 TRY( close(p[1]) );
-               /* if (pcmd->left->type == EXEC)
-                    exec_cmd((struct execcmd*) pcmd->left);
-                else*/
+
+               if (pcmd->left->type == EXEC){
+                    ecmd = (struct execcmd*) pcmd->left;
+                    //compruebo si es comando interno
+                    if(checkCommand(ecmd) == 1)
+                        exec_cmd(ecmd);
+                }else
                     run_cmd(pcmd->left);
+                
                 exit(EXIT_SUCCESS);
             }
 
@@ -870,10 +937,14 @@ void run_cmd(struct cmd* cmd)
                 TRY( dup(p[0]) );
                 TRY( close(p[0]) );
                 TRY( close(p[1]) );
-               /* if (pcmd->right->type == EXEC)
-                    exec_cmd((struct execcmd*) pcmd->right);
-                else*/
+                if (pcmd->right->type == EXEC){
+                    ecmd = (struct execcmd*) pcmd->right;
+                    //compruebo si es comando interno
+                    if(checkCommand(ecmd) == 1)
+                        exec_cmd(ecmd);
+                }else
                     run_cmd(pcmd->right);
+
                 exit(EXIT_SUCCESS);
             }
             TRY( close(p[0]) );
@@ -888,10 +959,13 @@ void run_cmd(struct cmd* cmd)
             bcmd = (struct backcmd*)cmd;
             if (fork_or_panic("fork BACK") == 0)
             {
-                if (bcmd->cmd->type == EXEC)
-                    exec_cmd((struct execcmd*) bcmd->cmd);
-                else
+                if (bcmd->cmd->type == EXEC){
+                    ecmd = (struct execcmd*) bcmd->cmd;
+                    if(checkCommand(ecmd) == 1)
+                        exec_cmd(ecmd);
+                }else
                     run_cmd(bcmd->cmd);
+
                 exit(EXIT_SUCCESS);
             }
             break;
@@ -1054,64 +1128,8 @@ void free_cmd(struct cmd* cmd)
         default:
             panic("%s: estructura `cmd` desconocida\n", __func__);
     }
-}
 
-void run_exit(struct cmd* cmd){
-    free_cmd(cmd);
-    free(cmd);
-    exit(EXIT_SUCCESS);
-}
 
-// get_path() obtiene el directorio actual (ruta absoluta)
-char* get_path(){
-    char *ruta = malloc(PATH_MAX);
-    if(!ruta){
-        perror("getcwd: malloc");
-        exit(EXIT_FAILURE);
-    }
-    getcwd(ruta, PATH_MAX);
-    if (!ruta){
-       perror("getcwd");
-        exit(EXIT_FAILURE); 
-    }
-
-    return ruta;
-}
-
-//run_cwd() obtiene la ruta absoluta del directorio actual
-void run_cwd(){
-    char *ruta = get_path();
-  //  fprintf(stderr,"simplesh: cwd: ");
-    fprintf(stdout,"%s\n", ruta);
-    free(ruta);
-}
-
-/*run_cd() ejecuta el comando cd directorio moviéndonos al directorio que se indica como argumento
-    cd " " nos sitúa en el directorio HOME
-    cd - nos sitúa en el directorio anterior OLDPWD*/
-void run_cd(char *dir){ 
-	char * old = get_path();
-	//Se ejecuta cd sin argumentos
-	if(dir == NULL){
-	  if(chdir(getenv("HOME")) == -1)
-	     fprintf(stderr,"run_cd: No existe el directorio\n");
-	}else if(strcmp(dir, "-") == 0){
-	//Se ejecuta cd -
-	   if(chdir(getenv("OLDPWD")) == -1)
-		fprintf(stderr,"run_cd: Variable OLDPWD no definida.\n");
-	}else{
-	//Ejecución de cd ruta	
-	   if(chdir(dir) == -1)
-	     fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
-	   
-	}
-	//Actualización de variable de entorno OLDPWD
-	if(setenv("OLDPWD", old, 1) == -1)
-		fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
-	//liberar old
-	free(old);
-
-}
 /******************************************************************************
  * Lectura de la línea de órdenes con la biblioteca libreadline
  ******************************************************************************/
@@ -1190,18 +1208,17 @@ void parse_args(int argc, char** argv)
 }
 
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv){
     char* buf;
     struct cmd* cmd;
     unsetenv("OLDPWD");
+    
     parse_args(argc, argv);
 
     DPRINTF(DBG_TRACE, "STR\n");
 
     // Bucle de lectura y ejecución de órdenes
-    while ((buf = get_cmd()) != NULL)
-    {
+    while ((buf = get_cmd()) != NULL){
         // Realiza el análisis sintáctico de la línea de órdenes
         cmd = parse_cmd(buf);
 
@@ -1218,7 +1235,7 @@ int main(int argc, char** argv)
 
         // Libera la memoria de las estructuras `cmd`
         free_cmd(cmd);
-	free(cmd); //fuga de memoria ARREGLADA
+        free(cmd);
 
         // Libera la memoria de la línea de órdenes
         free(buf);
