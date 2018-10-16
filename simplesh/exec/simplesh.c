@@ -787,7 +787,10 @@ char* get_path(){
 //run_cwd() obtiene la ruta absoluta del directorio actual
 void run_cwd(){
     char *ruta = get_path();
-    fprintf(stderr,"simplesh: cwd: ");
+    //comprobar si la ruta es valida
+    if(!ruta)
+        fprintf(stderr,"simplesh: cwd: ");
+    
     fprintf(stdout,"cwd: %s\n", ruta);
     free(ruta);
 }
@@ -795,25 +798,31 @@ void run_cwd(){
 /*run_cd() ejecuta el comando cd directorio moviéndonos al directorio que se indica como argumento
     cd " " nos sitúa en el directorio HOME
     cd - nos sitúa en el directorio anterior OLDPWD*/
-void run_cd(char *dir){ 
-    char * old = get_path();
+void run_cd(struct execcmd* cmd){ 
+
+    char *old = get_path();
+    
     //Se ejecuta cd sin argumentos
-    if(!dir){
+    if(!cmd->argv[1]){
       if(chdir(getenv("HOME")) == -1)
          fprintf(stderr,"run_cd: Variable HOME no está definida\n");
-    }else if(strcmp(dir, "-") == 0){
+    }else if(strcmp(cmd->argv[1], "-") == 0){
     //Se ejecuta cd -
        if(chdir(getenv("OLDPWD")) == -1)
             fprintf(stderr,"run_cd: Variable OLDPWD no definida\n");
     }else{
     //Ejecución de cd ruta  
-       if(chdir(dir) == -1)
-         fprintf(stderr,"run_cd: No existe el directorio '%s'\n", dir);
+       if(chdir(cmd->argv[1]) == -1)
+         fprintf(stderr,"run_cd: No existe el directorio '%s'\n", cmd->argv[1]);
+    }
+    //cd dir si hay más argumentos salta la excepción
+    if(cmd->argc > 2){ 
+        fprintf(stderr,"run_cd: Demasiados argumentos\n");
+        //exit(EXIT_FAILURE);
     }
     //Actualización de variable de entorno OLDPWD
     if(setenv("OLDPWD", old, 1) == -1)
         fprintf(stderr, "run_cd: No se ha podido actualizar la variable de entorno.");
-   
     //liberar old
     free(old);
 }
@@ -827,7 +836,6 @@ void run_exit(){
 // `checkCommand` comprueba si un comando es interno o no.
 // Devuelve 0 si es comando interno, 1 en caso contrario.
 int checkCommand(struct execcmd* cmd){
-    
     if (cmd->argv[0] == NULL)
         return 0;
    
@@ -842,7 +850,7 @@ int checkCommand(struct execcmd* cmd){
     }
    
     if (strcmp(cmd->argv[0],"cd") == 0){
-        run_cd(cmd->argv[1]);
+        run_cd(cmd);
         return 0;
     }
     return 1;
@@ -923,6 +931,7 @@ void run_cmd(struct cmd* cmd)
     struct subscmd* scmd;
     int p[2];
     int fd;
+    int auxfd;
 
     DPRINTF(DBG_TRACE, "STR\n");
 
@@ -943,7 +952,7 @@ void run_cmd(struct cmd* cmd)
 
         case REDR:
             rcmd = (struct redrcmd*) cmd;
-            if (fork_or_panic("fork REDR") == 0)
+            /*if (fork_or_panic("fork REDR") == 0)
             {
                 TRY( close(rcmd->fd) );
                 if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
@@ -959,6 +968,15 @@ void run_cmd(struct cmd* cmd)
                 exit(EXIT_SUCCESS);
             }
             TRY( wait(NULL) );
+            break;*/
+            auxfd = dup(rcmd->fd); //llamada al sistema que duplica el descr de fichero
+            TRY (close(rcmd->fd));
+            if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0) {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+            run_cmd(rcmd->cmd);
+            dup2(auxfd, 1); //para que apunte el fd stdout al desc de fichero de la redirección
             break;
 
         case LIST:
@@ -1036,6 +1054,8 @@ void run_cmd(struct cmd* cmd)
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
+            
+
             if (fork_or_panic("fork SUBS") == 0)
             {
                 run_cmd(scmd->cmd);
@@ -1214,7 +1234,8 @@ void parse_args(int argc, char** argv)
 
 int main(int argc, char** argv){
     char* buf;
-    struct cmd* cmd;
+    //struct cmd* cmd;
+    
     unsetenv("OLDPWD");
     
     parse_args(argc, argv);
