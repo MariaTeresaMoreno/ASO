@@ -849,35 +849,30 @@ fprintf(stdout, "\t-t BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o
 fprintf(stdout, "\t-h help\n");
 }
 
-//Función auxiliar encargada de llevar a cabo la lectura, dado un descriptor de fichero, y la escritura 
-//acorde a la configuración del comando introducida
 void parse_data(int file_descriptor, int tsize, int lsize, int bsize){
    int n_lineas = 0;
    int n_bytes = 0;
    char buffer[tsize];
-   int readed, aux_size;
-//Si no tiene ningún parámetro, por defecto mostrará las tres primeras líneas
-   if( lsize == -1 && bsize == -1) lsize = 3;
-//En cada lectura se procesa la información
+   char buffer_aux[tsize];
+   int readed, aux_size, index_b;
+   char * inicio = buffer;
+   memset(buffer, 0, tsize);
+   memset(buffer_aux, 0, tsize);	
+  // if( lsize == -1 && bsize == -1) lsize = 3;
 	while((readed = read(file_descriptor, buffer, tsize))>0){			
-	//Muestra las "lsize" líneas solicitadas
+	//Tengo que controlar que no sea la última línea
 	if (n_lineas < lsize && lsize != -1){
-	   for(int i = 0; i < readed; i++){
-		if (buffer[i] == '\n'){
+	  index_b = 0;
+	  while(n_lineas < lsize && index_b < readed){
+		buffer_aux[index_b] = buffer[index_b];
+		if (buffer[index_b] == '\n' )
 		  n_lineas ++;
-		  if(n_lineas == lsize){
-			write(STDOUT_FILENO, buffer, i+1);
-			break;
-	          }else{
-			write(STDOUT_FILENO, buffer, readed);
-		   }
-		  break;			
-		}
-	   }
-		}
-	//Muestra una cantidad "bsize" de bytes solicitados
+		index_b ++;
+	  }
+	  write(STDOUT_FILENO, buffer_aux, index_b);
+	}
 	if(bsize != -1){
-	   if((n_bytes + readed)<= bsize){
+	if((n_bytes + readed)<= bsize){
 	     write(STDOUT_FILENO, buffer, readed);
 	     n_bytes += readed;
 	  }else{
@@ -902,40 +897,49 @@ void run_hd(struct execcmd * cmd){
 	    lsize = -1; 
 	    bsize = -1;	
 	    int file_descriptor;
-	    char buffer[tsize];
 	    int readed, n_lineas, n_bytes;
 	    n_lineas = 0;
 	    n_bytes = 0;
+	//fprintf(stdout, "entra run hd\n");
 			
 	//Caso de solicitud de parámetro -h
+	if(cmd->argc > 1){
+
 	if (strcmp(cmd->argv[1], "-h") == 0){	
 		//Si hay más de dos argumentos no se ha construido bien el comando. Debe ser: hd -h		
 		if(cmd->argc > 2){
+			//fprintf(stdout, "opt argc: ");
 			fprintf(stderr, "hd: Opción no válida\n");
 			return;
 		}   
+		//fprintf(stdout, "opt print help: ");
 		print_help();
 		return;
 	}
+
+
+	}
+	//fprintf(stdout, "before if\n");
 	//Procesamiento del comando con las posibles opciones
 	    while ((opt = getopt(cmd->argc, cmd->argv, "l:b:t:h")) != -1) {
+		//fprintf(stdout, "opt: %i\n", opt);
 		switch (opt) {
 		    case 'l':
 			lsize = atoi(optarg);	
 			//En caso de que el tamaño de líneas a leer sea negativo, no es válido. 
-			if(lsize < 0){
+			if(lsize <= 0){
 			   fprintf(stderr, "hd: Opción no válida\n");
 			   break;		
 			}
 			if ( bsize != -1){
-			     fprintf(stderr, "hd	: Opciones incompatibles\n");
+			     fprintf(stderr, "hd: Opciones incompatibles\n");
   			    return;
 			}
 		       break;
 		    case 'b':
 			bsize = atoi(optarg);
 		       //En caso de que el tamaño de bytes a leer sea negativo, no es válido. 
-			if(bsize < 0){
+			if(bsize <= 0){
 			   fprintf(stderr, "hd: Opción no válida\n");
 			   break;		
 			}
@@ -947,7 +951,7 @@ void run_hd(struct execcmd * cmd){
 		    case 't':
 			tsize = atoi(optarg);
 			//En caso de que el tamaño de líneas a leer sea negativo, no es válido. 
-			if(tsize < 0){
+			if(tsize <= 0){
 			   fprintf(stderr, "hd: Opción no válida\n");
 			   break;		
 			}
@@ -956,19 +960,21 @@ void run_hd(struct execcmd * cmd){
 			fprintf(stderr, "Usage: %s [-f] [-n NUM]\n", cmd->argv[0]);
 		}
 	    }
-	
-	//La lectura de la información se hace a través de la entrada estándar, no se han añadido ficheros en la especificación del comando    
-	if(optind == cmd->argc){
-		   parse_data(STDIN_FILENO, tsize, lsize, bsize);
-		   
+	//fprintf(stdout, "lsize %i\n", lsize);
+	//fprintf(stdout, "opt %i\n", opt);
+	if(lsize == -1 && bsize == -1) lsize = 3;
+	if(optind == cmd->argc){    
+	   parse_data(STDIN_FILENO, tsize, lsize, bsize); 
 	}else{
-		//Para cada uno de los ficheros incluidos en la configuración del comando, se parsea la información acorde a los parámetros establecidos
+	//	fprintf(stdout, "opt ficheros: %i\n", opt);
+		//Recorre los ficheros del comando
 		for(int i = optind; i < cmd->argc; i++){
 			file_descriptor = open(cmd->argv[i], O_RDONLY);
 			if(file_descriptor != -1){
-				parse_data(file_descriptor, tsize, lsize, bsize);			
+				parse_data(file_descriptor, tsize, lsize, bsize);
+				close(file_descriptor);			
 			}else{	
-			   fprintf(stderr, "El fichero %s no existe", cmd->argv[i]);					
+			   fprintf(stderr, "hd: No se encontró el archivo '%s'\n", cmd->argv[i]);					
 			}
 		}
 	}	
