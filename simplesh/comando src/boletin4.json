@@ -1,0 +1,73 @@
+{
+    "setup": {
+        "desc": "B4",
+        "shell": "simplesh",
+        "prompt": "lolita@.*> ",
+        "timeout": 3,
+        "cmds": [
+            "(for l in $(seq 1 1000); do echo echo linea$l; done) > lineas"
+        ]
+    },
+    "tests": [
+        {
+            "cmd": "echo ls > script ; src script",
+            "out": "^lineas.*script\\r\\n$"
+        },
+        {
+            "cmd": "echo -n ls > script ; src script",
+            "out": "^lineas.*script\\r\\n$"
+        },
+        {
+            "cmd": "( echo % Comment ; echo ls ) > script ; src script",
+            "out": "^lineas.*script\\r\\n$"
+        },
+        {
+            "cmd": "( echo % Comment ; echo ls ) | src",
+            "out": "^lineas.*script\\r\\n$"
+        },
+        {
+            "cmd": "src -h | hd -l 1",
+            "out": "^Uso: src \\[-d DELIM\\].*\\.\\.\\.\\r\\n$"
+        },
+        {
+            "cmd": "(echo echo 1; echo echo 2; echo echo 3) > script ; src script | wc -l",
+            "out": "^3\\r\\n$"
+        },
+        {
+            "cmd": "(echo echo 1; echo echo 2; exit; echo echo 3) | src | wc -l",
+            "out": "^2\\r\\n$"
+        },
+        {
+            "cmd": "(echo / Comentario ; echo echo 1) | src -d /",
+            "out": "^1\\r\\n$"
+        },
+        {
+            "cmd": "(echo % Comentario ; echo / Comentario ) | src -d /%",
+            "out": "^src: Opción no válida.*\\r\\n"
+        },
+        {
+            "cmd": "src nofile",
+            "out": "^src: No se encontró el archivo 'nofile'\\r\\n$"
+        },
+        {
+            "cmd": "src lineas | grep linea | wc -l",
+            "out": "^1000\\r\\n$"
+        },
+        {
+            "cmd": "cat lineas | src | grep linea | wc -l",
+            "out": "^1000\\r\\n$"
+        },
+        {
+            "cmd": "src lineas | grep linea999",
+            "out": "^linea999\\r\\n$"
+        },
+        {
+            "cmd": "cat lineas | src | grep linea999",
+            "out": "^linea999\\r\\n$"
+        },
+        {
+            "cmd": "src lineas lineas | grep linea999",
+            "out": "^linea999\\r\\nlinea999\\r\\n$"
+        }
+    ]
+}
