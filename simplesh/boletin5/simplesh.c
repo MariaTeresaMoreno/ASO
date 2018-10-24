@@ -5,18 +5,16 @@
  * Departamento de Ingeniería y Tecnología de Computadores
  * Facultad de Informática de la Universidad de Murcia
  *
- * Alumnos: APELLIDOS, NOMBRE (GX.X)
- *          APELLIDOS, NOMBRE (GX.X)
+ * Alumnos: GUERRERO MUNUERA, MARÍA DOLORES (GX.X)
+ *          MORENO BOLUDA, MARÍA TERESA (G1.2)
  *
- * Convocatoria: FEBRERO/JUNIO/JULIO
+ * Convocatoria: FEBRERO
  */
 
 
 /*
  * Ficheros de cabecera
  */
-
-
 #define _POSIX_C_SOURCE 200809L /* IEEE 1003.1-2008 (véase /usr/include/features.h) */
 //#define NDEBUG                /* Traduce asertos y DMACROS a 'no ops' */
 
@@ -89,6 +87,10 @@ static int g_dbg_level = 0;
 
 // Número máximo de argumentos de un comando
 #define MAX_ARGS 16
+
+static int secondProcess[MAX_ARGS]; //DONDE GUARDO LOS PROCESOS EN SEGUNDO PLANO
+static sigset_t signalChld;
+int status = 0; //estado del proceso ejecutandose
 
 struct cmd* cmd;
 // Delimitadores
@@ -458,6 +460,8 @@ struct cmd* null_terminate(struct cmd*);
 void run_cmd(struct cmd* cmd);
 void free_cmd(struct cmd* cmd);
 void freeMemory();
+void bloqueoSIGCHLD();
+void desbloqueoSIGCHLD();
 
 
 // `parse_cmd` realiza el *análisis sintáctico* de la línea de órdenes
@@ -1180,6 +1184,9 @@ void run_cmd(struct cmd* cmd)
     int p[2];
     int fd;
     int auxfd;
+    int status2;
+    pid_t pid;
+    pid_t pid_r;
 
     DPRINTF(DBG_TRACE, "STR\n");
 
@@ -1192,15 +1199,17 @@ void run_cmd(struct cmd* cmd)
             //compruebo si es un comando interno
             //devuelve 1 si no es un comando interno y creo un fork
             if(checkCommand(ecmd) == 1){
-                if ((fork_or_panic("fork EXEC")) == 0)
+            	bloqueoSIGCHLD();
+                if ((pid = fork_or_panic("fork EXEC")) == 0)
                     exec_cmd(ecmd);
-                TRY( wait(NULL) );
+                TRY( waitpid(pid,&status,0) );
+                desbloqueoSIGCHLD();
             }
             break;
 
         case REDR:
             rcmd = (struct redrcmd*) cmd;
-            /*if (fork_or_panic("fork REDR") == 0)
+           /* if ((pid = fork_or_panic("fork REDR")) == 0)
             {
                 TRY( close(rcmd->fd) );
                 if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
@@ -1208,25 +1217,28 @@ void run_cmd(struct cmd* cmd)
                     perror("open");
                     exit(EXIT_FAILURE);
                 }
-
-                if (rcmd->cmd->type == EXEC)
-                    exec_cmd((struct execcmd*) rcmd->cmd);
-                else
-                    run_cmd(rcmd->cmd);
-                exit(EXIT_SUCCESS);
+                if(checkCommand((struct execcmd*)rcmd) == 1){
+	                if (rcmd->cmd->type == EXEC)
+	                    exec_cmd((struct execcmd*) rcmd->cmd);
+	                else
+	                    run_cmd(rcmd->cmd);
+	                exit(EXIT_SUCCESS);
+            	}
             }
-            TRY( wait(NULL) );
+            TRY( waitpid(pid,&status,0) );
             break;*/
-            auxfd = dup(rcmd->fd); //llamada al sistema que duplica el descr de fichero
+            rcmd = (struct redrcmd*) cmd;
+            auxfd = dup(rcmd->fd);
             TRY (close(rcmd->fd));
             if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0) {
                 perror("open");
                 exit(EXIT_FAILURE);
             }
-            run_cmd(rcmd->cmd);
-            dup2(auxfd, 1); //para que apunte el fd stdout al desc de fichero de la redirección
-            break;
 
+            run_cmd(rcmd->cmd);
+            dup2(auxfd, 1);
+
+            break;
         case LIST:
             lcmd = (struct listcmd*) cmd;
             run_cmd(lcmd->left);
@@ -1240,9 +1252,9 @@ void run_cmd(struct cmd* cmd)
                 perror("pipe");
                 exit(EXIT_FAILURE);
             }
-
+            bloqueoSIGCHLD();
             // Ejecución del hijo de la izquierda
-            if (fork_or_panic("fork PIPE left") == 0)
+            if ((pid = fork_or_panic("fork PIPE left")) == 0)
             {
                 TRY( close(1) );
                 TRY( dup(p[1]) );
@@ -1261,7 +1273,7 @@ void run_cmd(struct cmd* cmd)
             }
 
             // Ejecución del hijo de la derecha
-            if (fork_or_panic("fork PIPE right") == 0)
+            if ((pid_r = fork_or_panic("fork PIPE right")) == 0)
             {
                 TRY( close(0) );
                 TRY( dup(p[0]) );
@@ -1281,33 +1293,47 @@ void run_cmd(struct cmd* cmd)
             TRY( close(p[1]) );
 
             // Esperar a ambos hijos
-            TRY( wait(NULL) );
-            TRY( wait(NULL) );
+            TRY( waitpid(pid,&status,0) );
+            TRY( waitpid(pid_r,&status2,0) );
+            desbloqueoSIGCHLD();
             break;
 
         case BACK:
             bcmd = (struct backcmd*)cmd;
-            if (fork_or_panic("fork BACK") == 0)
+            bloqueoSIGCHLD();
+            if ((pid = fork_or_panic("fork BACK")) == 0)
             {
                 if (bcmd->cmd->type == EXEC){
                     ecmd = (struct execcmd*) bcmd->cmd;
                     if(checkCommand(ecmd) == 1)
                         exec_cmd(ecmd);
-                }else
-                    run_cmd(bcmd->cmd);
+               		}else
+                    	run_cmd(bcmd->cmd);
 
-                exit(EXIT_SUCCESS);
+				exit(EXIT_SUCCESS);
             }
+
+            //add a child process
+            int i = 0;
+  			while(secondProcess[i] != 0){
+    			i++;
+ 			}
+  			secondProcess[i] = pid;
+        	
+        	fprintf(stdout,"[%d]\n",pid);
+            desbloqueoSIGCHLD();
             break;
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
-            if (fork_or_panic("fork SUBS") == 0)
+            bloqueoSIGCHLD();   
+            if ((pid = fork_or_panic("fork SUBS")) == 0)
             {
                 run_cmd(scmd->cmd);
                 exit(EXIT_SUCCESS);
             }
-            TRY( wait(NULL) );
+            TRY( waitpid(pid,&status,0) );
+            desbloqueoSIGCHLD();
             break;
 
         case INV:
@@ -1317,9 +1343,6 @@ void run_cmd(struct cmd* cmd)
 
     DPRINTF(DBG_TRACE, "END\n");
 }
-
-
-
 
 void print_cmd(struct cmd* cmd)
 {
@@ -1477,10 +1500,54 @@ void parse_args(int argc, char** argv)
     }
 }
 
+//handle_sigchld define el manejador para la señal SIGCHLD
+void handle_sigchld(int sig) {
+	int saved_errno = errno;
+	pid_t pid;
+
+	char buffer[16];
+	memset(buffer,'\0',16);
+
+	while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+  		//escribo [PID] ya que ese proceso habrá terminado
+  		sprintf(buffer,"[%u]\n",pid);
+        write(STDOUT_FILENO,buffer,strlen(buffer));
+    	//elimino el proceso de la lista de procesos en seg. plano
+    	int i=0;
+        while(secondProcess[i] != pid)
+    			i++;
+  		secondProcess[i] = 0;
+    }
+    errno = saved_errno;
+}
+
+// `bloqueoSIGCHLD` se usa para bloquear el handler_sigchld de manera
+// que no interrumpa los procesos en primer plano
+void bloqueoSIGCHLD()
+{
+    int error = sigprocmask(SIG_BLOCK, &signalChld, NULL);
+	if (error == -1){
+	    perror("run_cmd -> sigprocmask: block");
+	    exit(EXIT_FAILURE);
+    }
+}
+
+//`bloqueoSIGCHLD` se usa para desbloquear el handler_sigchld 
+void desbloqueoSIGCHLD()
+{
+	int error = sigprocmask(SIG_UNBLOCK, &signalChld, NULL);
+	if (error == -1){
+	   perror("run_cmd -> sigprocmask: unblock");
+	   exit(EXIT_FAILURE);
+    }
+}
 
 int main(int argc, char** argv){
     char* buf;
     //struct cmd* cmd;
+
+    sigemptyset(&signalChld);
+	sigaddset(&signalChld, SIGCHLD);
 
     //bloqueo de la señal SIGINT enviada por CTRL+C
     sigset_t signalInit;
@@ -1493,18 +1560,20 @@ int main(int argc, char** argv){
 
 	struct  sigaction  sa;
 	memset (&sa, 0, sizeof(sa));
-	/*  SIGSEGV !!! */
 	sa.sa_handler = SIG_IGN; //para ignorar la señal SIGQUIT
 	sigemptyset (&sa.sa_mask);
-	if (argc == 2 && !strcmp(argv[1], "-r"))
-	/*  Restore  default  action  for  signal  when  signal_handler  is  invoked  */
-		sa.sa_flags = SA_RESETHAND;
-	
 	if (sigaction(SIGQUIT , &sa, NULL) ==  -1) {
 		perror("sigaction -> SIGQUIT");
 		exit(EXIT_FAILURE);
 	}
-
+	//evitar procesos zombies con sigchld
+	sa.sa_handler = handle_sigchld;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+	if (sigaction(SIGCHLD, &sa, NULL) == -1){
+		perror("MAIN -> SIGACTION");
+		exit(EXIT_FAILURE);
+	}
 	
     parse_args(argc, argv);
 
