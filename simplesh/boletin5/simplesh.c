@@ -845,50 +845,43 @@ void run_cd(struct execcmd* cmd){
     free(old);
 }
 
-void print_help_hd(){
-//Impresión de la ayuda del comando, se ha introducido correctamente el: hd -h
-fprintf(stdout, "Uso: hd [-l NLINES] [-b NBYTES] [-t BSIZE] [FILE1] [FILE2] ...\n");
-fprintf(stdout, "\tOpciones:\n");
-fprintf(stdout, "\t-l NLINES Número máximo de líneas a mostrar.\n");
-fprintf(stdout, "\t-b NBYTES Número máximo de bytes a mostrar.\n");
-fprintf(stdout, "\t-t BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o stdin.\n");
-fprintf(stdout, "\t-h help\n");
-}
-
+//Lectura de la entrada de datos, ya sea fichero o entrada estándar, y escritura en base
+//a la cantidad de bytes solicitada o la cantidad de líneas
 void parse_data(int file_descriptor, int tsize, int lsize, int bsize){
    int n_lineas = 0;
    int n_bytes = 0;
    char buffer[tsize];
    char buffer_aux[tsize];
    int readed, aux_size, index_b;
-   memset(buffer, 0, tsize);
-   memset(buffer_aux, 0, tsize);	
+   memset(buffer, 0, tsize);	
 	while((readed = read(file_descriptor, buffer, tsize))>0){			
-	//Tengo que controlar que no sea la última línea
-	if (n_lineas < lsize && lsize != -1){
+	//Impresión de las líneas solicitadas con el parámetro -t
+	if (lsize != -1){
 	  index_b = 0;
+	  //Cuenta la cantidad de líneas que contiene el buffer
 	  while(n_lineas < lsize && index_b < readed){
-		buffer_aux[index_b] = buffer[index_b];
 		if (buffer[index_b] == '\n' )
 		  n_lineas ++;
 		index_b ++;
 	  }
-	  write(STDOUT_FILENO, buffer_aux, index_b);
+	  //Imprime las líneas del búffer
+	  write(STDOUT_FILENO, buffer, index_b);
+	  if(n_lineas == lsize) return;
 	}
+	//Procesamiento de impresión de bytes
 	if(bsize != -1){
+	//En caso de que la cantidad de bytes impresos y la cantidad de bytes leídos hasta el momento sea inferior a los que se solicitan los mostrará
 	if((n_bytes + readed)<= bsize){
 	     write(STDOUT_FILENO, buffer, readed);
 	     n_bytes += readed;
 	  }else{
-	    aux_size = 0;
-	    if(n_bytes == bsize) break;
-	     for(int o = n_bytes; o < bsize; o++){
-		aux_size ++;						
-	     }
+		//En caso de que sea superior muestra la cantidad que falte para completar bsize
+	    aux_size = bsize-n_bytes;
 	     write(STDOUT_FILENO, buffer, aux_size);
 	  }
 
 	}
+	
    }	  
 }
 //Ejecución del comando hd, para ello se requiere el comando completo pasado por parámetro
@@ -900,23 +893,19 @@ void run_hd(struct execcmd * cmd){
 	    lsize = -1; 
 	    bsize = -1;	
 	    int file_descriptor;
-	    int readed, n_lineas, n_bytes;
-	    n_lineas = 0;
-	    n_bytes = 0;
 			
 	//Caso de solicitud de parámetro -h
 	if(cmd->argc > 1){
-
-	if (strcmp(cmd->argv[1], "-h") == 0){	
-		//Si hay más de dos argumentos no se ha construido bien el comando. Debe ser: hd -h		
-		if(cmd->argc > 2){
-			fprintf(stderr, "hd: Opción no válida\n");
+		if (strcmp(cmd->argv[1], "-h") == 0){	
+			//Si hay más de dos argumentos no se ha construido bien el comando. Debe ser: hd -h		
+			if(cmd->argc > 2){
+				fprintf(stderr, "hd: Opción no válida\n");
+				return;
+			}   
+			//Impresión de la ayuda del comando, se ha introducido correctamente el: hd -h
+			fprintf(stdout, "Uso: hd [-l NLINES] [-b NBYTES] [-t BSIZE] [FILE1] [FILE2] ...\n\tOpciones:\n\t-l NLINES Número máximo de líneas a mostrar.\n\t-b NBYTES Número máximo de bytes a mostrar.\n\t-t BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-h help\n");
 			return;
-		}   
-		print_help_hd();
-		return;
-	}
-
+		}
 
 	}
 	//Procesamiento del comando con las posibles opciones
@@ -939,7 +928,7 @@ void run_hd(struct execcmd * cmd){
 		       //En caso de que el tamaño de bytes a leer sea negativo, no es válido. 
 			if(bsize <= 0){
 			   fprintf(stderr, "hd: Opción no válida\n");
-			   break;		
+			   return;		
 			}
 			if ( lsize != -1){
 			     fprintf(stderr, "hd: Opciones incompatibles\n");
@@ -951,18 +940,20 @@ void run_hd(struct execcmd * cmd){
 			//En caso de que el tamaño de líneas a leer sea negativo, no es válido. 
 			if(tsize <= 0){
 			   fprintf(stderr, "hd: Opción no válida\n");
-			   break;		
+			   return;		
 			}
 			break;
 		    default:
 			fprintf(stderr, "Usage: %s [-f] [-n NUM]\n", cmd->argv[0]);
 		}
 	    }
+	//Si no se ha dado un valor de lsize ni de bsize quiere decir que se solicta 
 	if(lsize == -1 && bsize == -1) lsize = 3;
+	//El parámetro no consta de ficheros que leer, así que la información proviene de la entrada estándar
 	if(optind == cmd->argc){    
 	   parse_data(STDIN_FILENO, tsize, lsize, bsize); 
 	}else{
-		//Recorre los ficheros del comando
+		//Recorre los ficheros del comando para ejecutar en cada uno de ellos el comando
 		for(int i = optind; i < cmd->argc; i++){
 			file_descriptor = open(cmd->argv[i], O_RDONLY);
 			if(file_descriptor != -1){
@@ -974,62 +965,119 @@ void run_hd(struct execcmd * cmd){
 		}
 	}	
 }
-//Imprime el texto de ayuda del comando src
-void print_help_src(){
-fprintf(stdout, "Uso: src [-d DELIM] [FILE1] [FILE2]...\n");
-fprintf(stdout, "\tOpciones:\n");
-fprintf(stdout, "\t-d DELIM Carácter de inicio de comentarios.\n");
-fprintf(stdout, "\t-h help\n");
-}
 
 					
-//Comprueba que el caracter introducido en la opción -d sea válido (Caracteres especiales tipo: % $) 
+//test_delimiter se encarga de comprobar que la opción indicada en el comando src para el parámetro -d sea válida
+//para que lo sea, el único requisito es que se trate de un solo caracter de separación. 
 int test_delimiter(char * delim){
-//Cualquier carácter que no sea una letra o digito numérico
-regex_t r;
-char * regex = "^[^a-zA-Z0-9&;|]{1}$";
-int exec ;
-//Compilación de la expresión regular
-int status = regcomp (&r, regex, REG_EXTENDED|REG_NEWLINE);
-    if (status == 0) {
-//Comprobación de cumplimento de la ER
-	exec = regexec(&r, delim, 0, NULL, 0);
-//Libera la memoria reservada
-	regfree(&r);
-	return exec;
-    }else{
-	return 1;
-
-   }
+ if(strlen(delim) == 1) return 0;
+ return 1;
 }
-
+//Función auxiliar encargada de llevar a cabo la ejecución de un comando reconocido por src
+void exec_src_cmd(char * line){
+	struct cmd* cmd;
+	cmd =  parse_cmd(line);
+	null_terminate(cmd);
+	run_cmd(cmd);
+	free_cmd(cmd);
+	free(cmd);
+}
+//Procesamiento de los datos obtenidos por parte del comando src, ya sea de entrada estándar o desde fichero
+//Se encarga de obtener los comandos y ejecutarlos
 void parse_source(int file_descriptor, int tsize, char delim){
-   int n_lineas = 0;
+   int n_lineas;
    char buffer[tsize];
    char * token, ptrInicio, ptrFinal;
-   int readed, aux_lineas, index_b, index_lastline;
+   int readed, index_b;
+   int offset = 0;
    memset(buffer, 0, tsize);
-   struct cmd* cmd1;
-  // memset(buffer_aux, 0, tsize);
-	while((readed = read(file_descriptor, buffer, tsize))>0){
-		token = strtok(buffer, "\n");
-		while(token!= NULL){
-		   ptrInicio = *token;	
-		   ptrFinal = *(token+strlen(token)-1);		   
-		   if(ptrInicio != delim && ptrFinal != delim ){
-			cmd1 =  parse_cmd(token);
-			null_terminate(cmd1);
-			run_cmd(cmd1);
-			free_cmd(cmd1);
-    			free(cmd1);
+   //La lectura se realiza teniendo en cuenta un offset. Este offset será distinto de cero siempre y cuando al llenar el buffer en una lectura, se haya leído una línea a mitad
+   //Puede darse el caso en que el final del buffer contenga por ejemplo "echo " y que el resto del comando se obtenga en la siguiente lectura, con lo cual no podrá procesarse correctamente
+   while((readed = read(file_descriptor, buffer+offset, tsize-offset))>0){		
+		n_lineas = 0;
+		readed = readed+offset;
+		//En caso de que se complete el buffer de lectura que comprobará si se ha llevado a cabo una lectura parcial de una línea o no
+		if(readed == tsize){
+			offset = readed;
+			//Posiciona el offset en el último final de línea del buffer
+			while(buffer[offset] != '\n'){
+			    offset--;
+			}
+			offset++;
+			index_b = 0;
+			//Cuenta la cantidad de líneas completas
+			while(index_b< readed){
+			    if(buffer[index_b] == '\n') n_lineas++;
+			    index_b++;
+			}
+			//Pasa a procesar las líneas 
+			token = strtok(buffer, "\n");
+			//En caso de que la cantidad de líneas sea cero, se ha encontrado una línea que no ha finalizado en "\n" 
+			//ya que se ha realizado una lectura válida pero no ha encontrado el final de 				
+			//ninguna línea.
+			if(n_lineas == 0){
+	  		   ptrInicio = *buffer;	
+			   ptrFinal = *(buffer+readed-1);
+			   //Comprueba que no se trate de un comentario, si no lo es llama a la función auxiliar de procesamiento		   
+			   if(ptrInicio != delim && ptrFinal != delim ){
+				exec_src_cmd(token);
+			   }
+			}
+			//Procesa las líneas que ha contabilizado sin tener en cuenta el anterior caso especial
+			while(token != NULL && n_lineas > 0){
+				   ptrInicio = *token;	
+				   ptrFinal = *(token+strlen(token)-2);
+				   //Comprueba que no sea un comentario y se ejecuta invocando a la función auxiliar				   		   
+				   if(ptrInicio != delim && ptrFinal != delim ){
+					exec_src_cmd(token);
+				   }
+				token = strtok(NULL, "\n");
+				n_lineas--;
+			}
+		      	//Mueve la línea parcial leída al inicio del buffer y posiciona el offset en la posición a partir de la cual se deberá de empezar a escribir en
+			//la siguiente lectura la información obtenida con read()
+			memmove(buffer, buffer+offset, offset);
+			offset = readed - offset;	
 			
-		   }
-		   token = strtok(NULL, "\n");
-
-		}	
-	memset(buffer, 0, tsize);			   	
-   	}	  
+		}else{
+			//Se procesa el buffer sin tener en cuenta líneas parciales, ya que no las contendrá porque no se ha llenado completamente
+			n_lineas = 0;
+			index_b=0;
+			//Contabilización de líneas leídas
+			while(index_b< readed){
+			    if(buffer[index_b] == '\n') n_lineas++;
+			    index_b++;
+			}
+			token = strtok(buffer, "\n");
+			//Tratamiento del caso especial de línea sin \n
+			if(n_lineas == 0){
+	  		   ptrInicio = *buffer;	
+			   ptrFinal = *(buffer+readed-1);		   
+			   if(ptrInicio != delim && ptrFinal != delim ){
+				exec_src_cmd(token);
+			   }
+			}
+			//Tratamiento de líneas contabilizadas 
+			while(token != NULL && n_lineas > 0){
+				   ptrInicio = *token;	
+				   ptrFinal = *(token+strlen(token)-1);	
+				//Comprueba que no sea un comentario y se ejecuta invocando a la función auxiliar		   
+				   if(ptrInicio != delim && ptrFinal != delim ){
+					exec_src_cmd(token);
+				   }
+				token = strtok(NULL, "\n");
+				n_lineas--;
+			}
+			//Limpia el buffer de lectura para que, en caso de leer una cantidad menor a la actualmente leída, no se corrompan los datos.
+			memset(buffer, 0, tsize);
+			//Dado que no hay líneas parciales leídas, el valor del offset pasará a ser cero.
+			offset = 0;
+		} 
+			   	
+  	}	  
 }
+
+//Ejecución del comando interno src. Para ello, se lleva a cabo el tratamiento de los distintos parámetros disponibles.
 void run_src(struct execcmd *cmd){
 	    int opt, tsize;
 	    optind = 0;
@@ -1040,6 +1088,7 @@ void run_src(struct execcmd *cmd){
 	    while ((opt = getopt(cmd->argc, cmd->argv, "hd:h")) != -1) {
 		switch (opt) {
 		    case 'd':
+			//Comprobación de que el delimitador de comentario solicitado es válido y de que no se da el caso en que se indiquen varios de ellos.
 			delim = optarg[0];
 			if(test_delimiter(optarg)){
 				fprintf(stdout, "src: Opción no válida\n");
@@ -1053,8 +1102,10 @@ void run_src(struct execcmd *cmd){
 			}
 		       break;
 		    case 'h':
+			//Solicitud de ayuda del comando, comprueba que se ejecuta de la forma adecuada: src -h y no contiene ningún argumento adicional.
 			if ((cmd->argc - optind) == 0){
-			     print_help_src();
+			     fprintf(stdout, "Uso: src [-d DELIM] [FILE1] [FILE2]...\n\tOpciones:\n\t-d DELIM Carácter de inicio de comentarios.\n\t-h help\n");
+
 			     return;
 			}else {
 			     fprintf(stdout, "src: Opción no válida\n");
@@ -1066,14 +1117,16 @@ void run_src(struct execcmd *cmd){
 		}
 	    }
 	if(cmd->argc == optind){
-		//Reconocimiento de los comandos por pantalla
+		//Reconocimiento de los comandos por pantalla 
 		 parse_source(STDIN_FILENO, tsize, delim);
 	}else{
-		//Recorre los ficheros disponibles para ejecutar las órdenes
+		//Recorre los ficheros disponibles para ejecutar las órdenes encontradas en el listado de ficheros introducidos
 		for(int i = optind; i < cmd->argc; i++){
+			//Comprueba que el descriptor de fichero exista lo que nos indicará que el fichero existe.
 			if((file_descriptor = open(cmd->argv[i], O_RDONLY)) != -1){
+				//Procesamiento del contenido de los ficheros
 				parse_source(file_descriptor, tsize, delim);			
-
+				close(file_descriptor);
 			}else{
 			   fprintf(stdout, "src: No se encontró el archivo '%s'\n", cmd->argv[i]);
 			}
@@ -1087,6 +1140,9 @@ void run_bjobs(struct execcmd* cmd){
 
 	optind = 1;
 	int option = 0;
+	/* flag=0 indica bjobs -c
+		flag=1 indica bjobs -s*/
+	int flag =0;
 	//bjobs sin argumento
 	if(cmd->argc == 1){
 		//imprimo la lista de procesos en segundo plano
@@ -1101,21 +1157,30 @@ void run_bjobs(struct execcmd* cmd){
 				break;
 
 				case 's': //suspende todos los procesos
-					for (int i = 0; i < MAX_PROCESS; i++){
-						if(secondProcess[i] != 0){
-							kill(secondProcess[i],SIGSTOP);
-						}
-					}
+					flag = 1;
 				break;
 
 				case 'c': //reanuda todos los procesos
-					for (int i = 0; i< MAX_PROCESS; ++i){
-						if(secondProcess[i] != 0){
-							kill(secondProcess[i],SIGCONT);
-							secondProcess[i] = 0;
+					//trata el bjobs -s -c
+					if(flag==1){
+						fprintf(stderr, "bjobs: Opciones incompatibles\n");
+						return; //hago que salga de la función para que no se ejecute -s
+					}else
+						for (int i = 0; i< MAX_PROCESS; ++i){
+							if(secondProcess[i] != 0){
+								kill(secondProcess[i],SIGCONT);
+								//elimino el pid del proceso que se ha reanudado
+								secondProcess[i] = 0;
+							}
 						}
-					}
 				break;
+			}
+		}
+		if(flag==1){
+			for (int i = 0; i < MAX_PROCESS; i++){
+				if(secondProcess[i] != 0){
+					kill(secondProcess[i],SIGSTOP);
+				}
 			}
 		}
 	}
@@ -1567,7 +1632,7 @@ void handle_sigchld(int sig) {
     	int i=0;
         for (int i = 0; i < MAX_PROCESS; i++){
             if (secondProcess[i]==pid){
-                secondProcess[i]=-1;
+                secondProcess[i]=0;
             }
         }
     }
@@ -1585,7 +1650,7 @@ void bloqueoSIGCHLD()
     }
 }
 
-//`bloqueoSIGCHLD` se usa para desbloquear el handler_sigchld 
+//`desbloqueoSIGCHLD` se usa para desbloquear el handler_sigchld 
 void desbloqueoSIGCHLD()
 {
 	int error = sigprocmask(SIG_UNBLOCK, &signalChld, NULL);
