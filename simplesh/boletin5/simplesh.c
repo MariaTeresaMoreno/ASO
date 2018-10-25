@@ -88,7 +88,10 @@ static int g_dbg_level = 0;
 // Número máximo de argumentos de un comando
 #define MAX_ARGS 16
 
-static int secondProcess[MAX_ARGS]; //DONDE GUARDO LOS PROCESOS EN SEGUNDO PLANO
+//max procesos
+#define MAX_PROCESS 8
+
+static int secondProcess[MAX_PROCESS]; //DONDE GUARDO LOS PROCESOS EN SEGUNDO PLANO
 static sigset_t signalChld;
 int status = 0; //estado del proceso ejecutandose
 
@@ -776,6 +779,13 @@ void exec_cmd(struct execcmd* ecmd)
     panic("no se encontró el comando '%s'\n", ecmd->argv[0]);
 }
 
+/* run_exit llama a la función freeMemory encargada de liberar la memoria de la estructura
+cmd y finaliza simplesh*/
+void run_exit(){
+    freeMemory();
+    exit(EXIT_SUCCESS);
+}
+
 // get_path() obtiene el directorio actual (ruta absoluta)
 char* get_path(){
     char *ruta = malloc(PATH_MAX);
@@ -1073,10 +1083,45 @@ void run_src(struct execcmd *cmd){
 	}
 }
 
-void run_exit(){
-    freeMemory();
-    exit(EXIT_SUCCESS);
+void run_bjobs(struct execcmd* cmd){
+
+	optind = 1;
+	int option = 0;
+	//bjobs sin argumento
+	if(cmd->argc == 1){
+		//imprimo la lista de procesos en segundo plano
+		for (int i = 0; i < MAX_PROCESS; ++i)
+			if(secondProcess[i] != 0)
+				fprintf(stdout, "[%d]\n", secondProcess[i]);
+	}else{
+		while ((option=getopt(cmd->argc,cmd->argv,"hsc")) != -1) {
+			switch (option) {
+				case 'h': //help
+					fprintf(stdout, "Uso: bjobs [-s] [-c] [-h]\n\tOpciones:\n\t-s Suspende todos los procesos en segundo plano.\n\t-c Reanuda todos los procesos en segundo plano.\n\t-h help\n");
+				break;
+
+				case 's': //suspende todos los procesos
+					for (int i = 0; i < MAX_PROCESS; i++){
+						if(secondProcess[i] != 0){
+							kill(secondProcess[i],SIGSTOP);
+						}
+					}
+				break;
+
+				case 'c': //reanuda todos los procesos
+					for (int i = 0; i< MAX_PROCESS; ++i){
+						if(secondProcess[i] != 0){
+							kill(secondProcess[i],SIGCONT);
+							secondProcess[i] = 0;
+						}
+					}
+				break;
+			}
+		}
+	}
+
 }
+
 // `checkCommand` comprueba si un comando es interno o no.
 // Devuelve 0 si es comando interno, 1 en caso contrario.
 int checkCommand(struct execcmd* cmd){
@@ -1104,6 +1149,10 @@ int checkCommand(struct execcmd* cmd){
    if (strcmp(cmd->argv[0],"src") == 0){
         run_src(cmd);
         return 0;
+    }
+    if(strcmp(cmd->argv[0],"bjobs")==0){
+    	run_bjobs(cmd);
+    	return 0;
     }
     return 1;
 }
@@ -1313,12 +1362,14 @@ void run_cmd(struct cmd* cmd)
 				exit(EXIT_SUCCESS);
             }
 
-            //add a child process
+            //add a child process 
+            //si se supera 8 procesos no puede añadir más
             int i = 0;
-  			while(secondProcess[i] != 0){
+  			while(secondProcess[i]!=0 && i<MAX_PROCESS){
     			i++;
  			}
-  			secondProcess[i] = pid;
+ 			if(secondProcess[i]==0) //si esto no se cumple quiere decir que se ha superado 8 child process
+  				secondProcess[i] = pid;
         	
         	fprintf(stdout,"[%d]\n",pid);
             desbloqueoSIGCHLD();
@@ -1514,9 +1565,11 @@ void handle_sigchld(int sig) {
         write(STDOUT_FILENO,buffer,strlen(buffer));
     	//elimino el proceso de la lista de procesos en seg. plano
     	int i=0;
-        while(secondProcess[i] != pid)
-    			i++;
-  		secondProcess[i] = 0;
+        for (int i = 0; i < MAX_PROCESS; i++){
+            if (secondProcess[i]==pid){
+                secondProcess[i]=-1;
+            }
+        }
     }
     errno = saved_errno;
 }
@@ -1545,6 +1598,9 @@ void desbloqueoSIGCHLD()
 int main(int argc, char** argv){
     char* buf;
     //struct cmd* cmd;
+
+    //inicializo a 0 la lista de procesos en segundo plano
+    memset(secondProcess,0,sizeof(secondProcess));
 
     sigemptyset(&signalChld);
 	sigaddset(&signalChld, SIGCHLD);
