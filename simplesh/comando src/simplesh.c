@@ -96,6 +96,7 @@ static sigset_t signalChld;
 int status = 0; //estado del proceso ejecutandose
 
 struct cmd* cmd;
+struct cmd* cmd1;
 // Delimitadores
 static const char WHITESPACE[] = " \t\r\n\v";
 // Caracteres especiales
@@ -782,6 +783,11 @@ void exec_cmd(struct execcmd* ecmd)
 /* run_exit llama a la función freeMemory encargada de liberar la memoria de la estructura
 cmd y finaliza simplesh*/
 void run_exit(){
+    //En la ejecución de un exit desde el comando src se tiene que liberar la propia estrucutra del exit junto con la de src
+    if(cmd1 != NULL){
+	free_cmd(cmd1);
+        free(cmd1);
+    }
     freeMemory();
     exit(EXIT_SUCCESS);
 }
@@ -974,7 +980,7 @@ int test_delimiter(char * delim){
 }
 //Función auxiliar encargada de llevar a cabo la ejecución de un comando reconocido por src
 void exec_src_cmd(char * line){
-	struct cmd* cmd1;
+	//struct cmd* cmd1;
 	cmd1 =  parse_cmd(line);
 	null_terminate(cmd1);
 	run_cmd(cmd1);
