@@ -9,6 +9,6 @@ main ( int argc , char * argv []){
 		printf(2, "date failed\n");
 		exit();
 	}
-	printf(1,"La hora actual es: %d:%d:%d\n", r.hour,r.minute,r.second); //hh:mm:ss
+	printf(1,"La hora actual es: %d:%d:%d\n", r.hour+1,r.minute,r.second); //hh:mm:ss
 	exit();
 }
