@@ -183,6 +183,9 @@ UPROGS=\
 	_zombie\
 	_date\
 	_dup2test\
+	_tsbrk1\
+	_tsbrk2\
+	_tsbrk3\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

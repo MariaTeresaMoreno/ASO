@@ -68,6 +68,10 @@ exec(char *path, char **argv)
   clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
   sp = sz;
 
+  //inicialización dir. para b8-pila
+  curproc->initPila = sp-PGSIZE; //resto tam pág.
+
+
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
     if(argc >= MAXARG)

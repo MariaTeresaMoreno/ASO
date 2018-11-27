@@ -42,17 +42,25 @@ sys_getpid(void)
   return myproc()->pid;
 }
 
+//Devuelve el puntero anterior a donde empieza el segmento.
 int
 sys_sbrk(void)
 {
   int addr;
   int n;
 
-  if(argint(0, &n) < 0)
+  if(argint(0, &n) < 0) //obtiene el primer argumento n
     return -1;
+  
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  
+  if(n <= 0){ //arg. negativo
+    if(myproc()->sz+n < 0) //tam pag es menor q cero
+      return -1;
+    growproc(n);
+  }
+  myproc()->sz += n; //modificar tam.
+
   return addr;
 }
 
