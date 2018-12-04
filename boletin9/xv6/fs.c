@@ -373,7 +373,7 @@ iunlockput(struct inode *ip)
 static uint
 bmap(struct inode *ip, uint bn)
 {
-  uint addr, *a;
+ uint addr, *a;
   struct buf *bp;
 
   if(bn < NDIRECT){
@@ -381,17 +381,20 @@ bmap(struct inode *ip, uint bn)
       ip->addrs[bn] = addr = balloc(ip->dev);
     return addr;
   }
-  //aquí se sitúa en el bloque simplemente indirecto
+
+  // Se resta el numero de bloques directos para situarnos en el
+  // bloque simplemente indirecto
   bn -= NDIRECT;
 
-  //se comprueba si el bloque pertenece al  bloque simplemente indirecto
+  // Se comprueba si el bloque pertenece al bloque simplemente indirecto
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
-    //Se crea el bloque directo si no está creado
+    
+    // Se crea el bloque directo si no esta creado
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
       log_write(bp);
@@ -400,8 +403,48 @@ bmap(struct inode *ip, uint bn)
     return addr;
   }
 
+  // Como no pertenece al bloque simplmente indirecto, se resta su numero
+  // de entradas (128) para poder situarnos en el doblemente indirecto
+  bn -= NINDIRECT;
+
+  if(bn < DOBLEINDIRECTO){
+
+    // Cargar un bloque doblemente indirecto alojandolo si es necesario.
+    if((addr = ip->addrs[NDIRECT+1]) == 0)
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+
+    // Crea el bloque simplemente indirecto si este no esta creado
+    if((addr = a[bn/NINDIRECT]) == 0){      
+      a[bn/NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    
+    // Se carga el bloque simplemente indirecto
+    struct buf *bp2;
+    bp2 = bread(ip->dev, addr);
+    a = (uint*)bp2->data;
+    
+    // Se crea el bloque directo si no está creado
+    // Con el % accedemos a la entrada correspondiente del bn en el bloque directo
+    if((addr = a[bn%NINDIRECT]) == 0){
+      a[bn%NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp2);
+    }
+    // Se carga el bloque directo si ya está creado
+    else
+      addr = a[bn%NINDIRECT];
+
+    brelse(bp2);
+    
+    brelse(bp);
+    return addr;
+  }
+
   panic("bmap: out of range");
 }
+
 
 // Truncate inode (discard contents).
 // Only called when the inode has no links
