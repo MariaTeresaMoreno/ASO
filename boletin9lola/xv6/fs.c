@@ -497,12 +497,12 @@ itrunc(struct inode *ip)
   			for (j = 0; j < NINDIRECT; j++)
   			{
   				if(b[j])
-  				bfree(ip->dev, ip->addrs[NDIRECT + 1 + NINDIRECT + j]);
+  				bfree(ip->dev, b[j]);
 
   			}
   			brelse(bp2);
   			//Libero el BSI
-  			bfree(ip->dev, ip->addrs[NDIRECT + 1 + i]);
+  			bfree(ip->dev, a[i]);
   		}
   	}
   	ip->addrs[NDIRECT+1] = 0;
