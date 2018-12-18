@@ -54,12 +54,11 @@ sys_sbrk(void)
   
   addr = myproc()->sz;
   
-  if(n <= 0){ //arg. negativo
-    if(myproc()->sz+n < 0) //tam pag es menor q cero
-      return -1;
+  if(n < 0){ //arg. negativo
     growproc(n);
+  }else{
+  		myproc()->sz += n; //modificar tam.
   }
-  myproc()->sz += n; //modificar tam.
 
   return addr;
 }
