@@ -2,7 +2,7 @@
     "setup": {
         "desc": "B4",
         "shell": "simplesh",
-        "prompt": "lolita@.*> ",
+        "prompt": "mtmoreno@.*> ",
         "timeout": 3,
         "cmds": [
             "(for l in $(seq 1 1000); do echo echo linea$l; done) > lineas"

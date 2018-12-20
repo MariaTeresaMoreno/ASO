@@ -91,7 +91,7 @@ trap(struct trapframe *tf)
 
       //asignación de memoria bajo demanda
       uint a = PGROUNDDOWN(rcr2());
-      /*comprobar falls en la página inválida debajo de la pila*/
+      /*comprobar fallos en la página inválida debajo de la pila*/
       //si el nuevo tamaño de página está por debajo de la pila
       if (a <= myproc()->initPila) {
         cprintf("Desbordamiento de pila\n");
@@ -108,15 +108,14 @@ trap(struct trapframe *tf)
       }
       //reservar un marco de memoria fisica kalloc
       memset(mem, 0, PGSIZE);
-      
-      //mappages mapear esa pagina de memoria fisica en la memoria virtual de la pag q ha fallado rcr2()
+      //mappages mapear esa pagina de memoria fisica en la memoria virtual de la pag que ha fallado rcr2()
       if(mappages(myproc()->pgdir,(char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
         cprintf("T_PGFLT: mappages out of memory (2)\n");
         kfree(mem);
         myproc()->killed = 1;      
       }
-
     break;
+
   //PAGEBREAK: 13
   default:
     if(myproc() == 0 || (tf->cs&3) == 0){
